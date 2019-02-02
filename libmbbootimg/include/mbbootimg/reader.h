@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017  Andrew Gunnerson <andrewgunnerson@gmail.com>
+ * Copyright (C) 2017-2018  Andrew Gunnerson <andrewgunnerson@gmail.com>
  *
  * This file is part of DualBootPatcher
  *
@@ -20,15 +20,20 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
-#include <cstdarg>
 #include <cstddef>
 
 #include "mbcommon/common.h"
+#include "mbcommon/outcome.h"
 
-#include "mbbootimg/defs.h"
+#include "mbbootimg/entry.h"
+#include "mbbootimg/format.h"
+#include "mbbootimg/header.h"
 #include "mbbootimg/reader_error.h"
+#include "mbbootimg/reader_p.h"
 
 namespace mb
 {
@@ -37,62 +42,48 @@ class File;
 namespace bootimg
 {
 
-class Entry;
-class Header;
-
-class ReaderPrivate;
 class MB_EXPORT Reader
 {
-    MB_DECLARE_PRIVATE(Reader)
-
 public:
-    Reader();
-    ~Reader();
+    Reader() noexcept;
+    ~Reader() noexcept;
 
     MB_DISABLE_COPY_CONSTRUCT_AND_ASSIGN(Reader)
 
-    Reader(Reader &&other);
-    Reader & operator=(Reader &&rhs);
+    Reader(Reader &&other) noexcept;
+    Reader & operator=(Reader &&rhs) noexcept;
 
     // Open/close
-    int open_filename(const std::string &filename);
-    int open_filename_w(const std::wstring &filename);
-    int open(std::unique_ptr<File> file);
-    int open(File *file);
-    int close();
+    oc::result<void> open_filename(const std::string &filename);
+    oc::result<void> open_filename_w(const std::wstring &filename);
+    oc::result<void> open(std::unique_ptr<File> file);
+    oc::result<void> open(File *file);
+    oc::result<void> close();
 
     // Operations
-    int read_header(Header &header);
-    int read_entry(Entry &entry);
-    int go_to_entry(Entry &entry, int entry_type);
-    int read_data(void *buf, size_t size, size_t &bytes_read);
+    oc::result<Header> read_header();
+    oc::result<Entry> read_entry();
+    oc::result<Entry> go_to_entry(std::optional<EntryType> entry_type);
+    oc::result<size_t> read_data(void *buf, size_t size);
 
     // Format operations
-    int format_code();
-    std::string format_name();
-    int set_format_by_code(int code);
-    int set_format_by_name(const std::string &name);
-    int enable_format_all();
-    int enable_format_by_code(int code);
-    int enable_format_by_name(const std::string &name);
+    std::optional<Format> format();
+    oc::result<void> enable_formats(Formats formats);
+    oc::result<void> enable_formats_all();
 
-    // Specific formats
-    int enable_format_android();
-    int enable_format_bump();
-    int enable_format_loki();
-    int enable_format_mtk();
-    int enable_format_sony_elf();
-
-    // Error handling
-    std::error_code error();
-    std::string error_string();
-    int set_error(std::error_code ec);
-    MB_PRINTF(3, 4)
-    int set_error(std::error_code ec, const char *fmt, ...);
-    int set_error_v(std::error_code ec, const char *fmt, va_list ap);
+    // Reader state
+    bool is_open();
 
 private:
-    std::unique_ptr<ReaderPrivate> _priv_ptr;
+    // Global state
+    detail::ReaderState m_state;
+
+    // File
+    std::unique_ptr<File> m_owned_file;
+    File *m_file;
+
+    std::vector<std::unique_ptr<detail::FormatReader>> m_formats;
+    detail::FormatReader *m_format;
 };
 
 }

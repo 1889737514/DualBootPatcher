@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017  Andrew Gunnerson <andrewgunnerson@gmail.com>
+ * Copyright (C) 2017-2018  Andrew Gunnerson <andrewgunnerson@gmail.com>
  *
  * This file is part of DualBootPatcher
  *
@@ -19,11 +19,9 @@
 
 #include "mbbootimg/format/mtk_error.h"
 
-namespace mb
-{
-namespace bootimg
-{
-namespace mtk
+#include <string>
+
+namespace mb::bootimg::mtk
 {
 
 struct MtkErrorCategory : std::error_category
@@ -52,8 +50,6 @@ const char * MtkErrorCategory::name() const noexcept
 std::string MtkErrorCategory::message(int ev) const
 {
     switch (static_cast<MtkError>(ev)) {
-    case MtkError::HeaderSetFieldsFailed:
-        return "failed to set header fields";
     case MtkError::MtkHeaderNotFound:
         return "MTK header not found";
     case MtkError::MismatchedKernelSizeInHeaders:
@@ -71,6 +67,4 @@ std::string MtkErrorCategory::message(int ev) const
     }
 }
 
-}
-}
 }

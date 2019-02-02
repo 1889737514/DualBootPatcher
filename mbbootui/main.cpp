@@ -23,18 +23,18 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <archive.h>
+#include <archive_entry.h>
+
 #include "mbcommon/string.h"
 #include "mbcommon/version.h"
 #include "mbdevice/json.h"
 #include "mblog/logging.h"
 #include "mbpatcher/patcherconfig.h"
-#include "mbutil/autoclose/archive.h"
 #include "mbutil/copy.h"
 #include "mbutil/directory.h"
 #include "mbutil/file.h"
-#include "mbutil/integer.h"
 #include "mbutil/properties.h"
-#include "mbutil/string.h"
 
 #include <android/log.h>
 
@@ -50,6 +50,8 @@
 #include "variables.h"
 
 #include "config/config.hpp"
+
+#define LOG_TAG "mbbootui/main"
 
 #define APPEND_TO_LOG               1
 
@@ -71,10 +73,13 @@
 
 using namespace mb::device;
 
+using ScopedArchive = std::unique_ptr<archive, decltype(archive_free) *>;
+
 static mb::patcher::PatcherConfig pc;
 
 static bool redirect_output_to_file(const char *path, mode_t mode)
 {
+    // O_CLOEXEC should not be enabled here
     int flags = O_WRONLY | O_CREAT;
 #if APPEND_TO_LOG
     flags |= O_APPEND;
@@ -99,17 +104,16 @@ static bool redirect_output_to_file(const char *path, mode_t mode)
 
 static bool detect_device()
 {
-    std::vector<unsigned char> contents;
-    if (!mb::util::file_read_all(DEVICE_JSON_PATH, contents)) {
-        LOGE("%s: Failed to read file: %s", DEVICE_JSON_PATH, strerror(errno));
+    auto contents = mb::util::file_read_all(DEVICE_JSON_PATH);
+    if (!contents) {
+        LOGE("%s: Failed to read file: %s", DEVICE_JSON_PATH,
+             contents.error().message().c_str());
         return false;
     }
-    contents.push_back('\0');
 
     JsonError error;
 
-    if (!device_from_json(reinterpret_cast<char *>(contents.data()),
-                          tw_device, error)) {
+    if (!device_from_json(contents.value(), tw_device, error)) {
         LOGE("%s: Failed to load device", DEVICE_JSON_PATH);
         return false;
     }
@@ -125,12 +129,12 @@ static bool detect_device()
 static bool extract_theme(const std::string &path, const std::string &target,
                           const std::string &theme_name)
 {
-    mb::autoclose::archive in(archive_read_new(), archive_read_free);
+    ScopedArchive in(archive_read_new(), archive_read_free);
     if (!in) {
         LOGE("%s: Out of memory when creating archive reader", __FUNCTION__);
         return false;
     }
-    mb::autoclose::archive out(archive_write_disk_new(), archive_write_free);
+    ScopedArchive out(archive_write_disk_new(), archive_write_free);
     if (!out) {
         LOGE("%s: Out of memory when creating disk writer", __FUNCTION__);
         return false;
@@ -230,7 +234,7 @@ static void wait_forever()
 static void load_other_config()
 {
     // Get Android version (needed for pattern input)
-    tw_android_sdk_version = mb::util::property_file_get_snum<int>(
+    tw_android_sdk_version = mb::util::property_file_get_num<int>(
             "/raw/system/build.prop", "ro.build.version.sdk", 0);
 }
 
@@ -391,9 +395,9 @@ int main(int argc, char *argv[])
 
     umask(0);
 
-    if (!mb::util::mkdir_recursive(MBBOOTUI_BASE_PATH, 0755)) {
+    if (auto r = mb::util::mkdir_recursive(MBBOOTUI_BASE_PATH, 0755); !r) {
         LOGE("%s: Failed to create directory: %s",
-             MBBOOTUI_BASE_PATH, strerror(errno));
+             MBBOOTUI_BASE_PATH, r.error().message().c_str());
         return EXIT_FAILURE;
     }
 
@@ -489,7 +493,7 @@ int main(int argc, char *argv[])
     // Exit action
     std::string exit_action;
     DataManager::GetValue(VAR_TW_EXIT_ACTION, exit_action);
-    std::vector<std::string> args = mb::util::split(exit_action, ",");
+    std::vector<std::string> args = mb::split(exit_action, ',');
 
     // Save settings
     DataManager::Flush();
@@ -537,14 +541,7 @@ static int log_bridge(int prio, const char *tag, const char *fmt, va_list ap)
         break;
     }
 
-    char newfmt[512];
-    if (snprintf(newfmt, sizeof(newfmt), "[%s] %s", tag, fmt)
-            >= (int) sizeof(newfmt)) {
-        // Doesn't fit
-        return -1;
-    }
-
-    mb::log::logv(level, newfmt, ap);
+    mb::log::log(level, "[%s] %s", tag, mb::format_v(fmt, ap).c_str());
     return 0;
 }
 

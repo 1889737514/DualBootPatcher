@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017  Andrew Gunnerson <andrewgunnerson@gmail.com>
+ * Copyright (C) 2017-2018  Andrew Gunnerson <andrewgunnerson@gmail.com>
  *
  * This file is part of DualBootPatcher
  *
@@ -21,57 +21,50 @@
 
 #include "mbbootimg/guard_p.h"
 
+#include <optional>
 #include <string>
 
 #include "mbbootimg/format/sony_elf_p.h"
 #include "mbbootimg/format/segment_writer_p.h"
-#include "mbbootimg/writer.h"
 #include "mbbootimg/writer_p.h"
 
 
-namespace mb
-{
-namespace bootimg
-{
-namespace sonyelf
+namespace mb::bootimg::sonyelf
 {
 
-class SonyElfFormatWriter : public FormatWriter
+class SonyElfFormatWriter : public detail::FormatWriter
 {
 public:
-    SonyElfFormatWriter(Writer &writer);
-    virtual ~SonyElfFormatWriter();
+    SonyElfFormatWriter() noexcept;
+    virtual ~SonyElfFormatWriter() noexcept;
 
     MB_DISABLE_COPY_CONSTRUCT_AND_ASSIGN(SonyElfFormatWriter)
     MB_DEFAULT_MOVE_CONSTRUCT_AND_ASSIGN(SonyElfFormatWriter)
 
-    virtual int type() override;
-    virtual std::string name() override;
+    Format type() override;
 
-    virtual int get_header(File &file, Header &header) override;
-    virtual int write_header(File &file, const Header &header) override;
-    virtual int get_entry(File &file, Entry &entry) override;
-    virtual int write_entry(File &file, const Entry &entry) override;
-    virtual int write_data(File &file, const void *buf, size_t buf_size,
-                           size_t &bytes_written) override;
-    virtual int finish_entry(File &file) override;
-    virtual int close(File &file) override;
+    oc::result<void> open(File &file) override;
+    oc::result<void> close(File &file) override;
+    oc::result<Header> get_header(File &file) override;
+    oc::result<void> write_header(File &file, const Header &header) override;
+    oc::result<Entry> get_entry(File &file) override;
+    oc::result<void> write_entry(File &file, const Entry &entry) override;
+    oc::result<size_t> write_data(File &file, const void *buf, size_t buf_size) override;
+    oc::result<void> finish_entry(File &file) override;
 
 private:
     // Header values
-    Sony_Elf32_Ehdr _hdr;
-    Sony_Elf32_Phdr _hdr_kernel;
-    Sony_Elf32_Phdr _hdr_ramdisk;
-    Sony_Elf32_Phdr _hdr_cmdline;
-    Sony_Elf32_Phdr _hdr_ipl;
-    Sony_Elf32_Phdr _hdr_rpm;
-    Sony_Elf32_Phdr _hdr_appsbl;
+    Sony_Elf32_Ehdr m_hdr;
+    Sony_Elf32_Phdr m_hdr_kernel;
+    Sony_Elf32_Phdr m_hdr_ramdisk;
+    Sony_Elf32_Phdr m_hdr_cmdline;
+    Sony_Elf32_Phdr m_hdr_ipl;
+    Sony_Elf32_Phdr m_hdr_rpm;
+    Sony_Elf32_Phdr m_hdr_appsbl;
 
-    std::string _cmdline;
+    std::string m_cmdline;
 
-    SegmentWriter _seg;
+    std::optional<SegmentWriter> m_seg;
 };
 
-}
-}
 }

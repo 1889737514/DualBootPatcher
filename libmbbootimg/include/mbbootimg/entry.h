@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017  Andrew Gunnerson <andrewgunnerson@gmail.com>
+ * Copyright (C) 2017-2018  Andrew Gunnerson <andrewgunnerson@gmail.com>
  *
  * This file is part of DualBootPatcher
  *
@@ -20,60 +20,53 @@
 #pragma once
 
 #include <memory>
-#include <string>
+#include <optional>
 
 #include <cstdint>
 
 #include "mbcommon/common.h"
-#include "mbcommon/optional.h"
+#include "mbcommon/flags.h"
 
-namespace mb
-{
-namespace bootimg
+namespace mb::bootimg
 {
 
-constexpr int ENTRY_TYPE_KERNEL             = 1 << 0;
-constexpr int ENTRY_TYPE_RAMDISK            = 1 << 1;
-constexpr int ENTRY_TYPE_SECONDBOOT         = 1 << 2;
-constexpr int ENTRY_TYPE_DEVICE_TREE        = 1 << 3;
-constexpr int ENTRY_TYPE_ABOOT              = 1 << 4;
-constexpr int ENTRY_TYPE_MTK_KERNEL_HEADER  = 1 << 5;
-constexpr int ENTRY_TYPE_MTK_RAMDISK_HEADER = 1 << 6;
-constexpr int ENTRY_TYPE_SONY_IPL           = 1 << 7;
-constexpr int ENTRY_TYPE_SONY_RPM           = 1 << 8;
-constexpr int ENTRY_TYPE_SONY_APPSBL        = 1 << 9;
+enum class EntryType
+{
+    Kernel           = 1 << 0,
+    Ramdisk          = 1 << 1,
+    SecondBoot       = 1 << 2,
+    DeviceTree       = 1 << 3,
+    Aboot            = 1 << 4,
+    MtkKernelHeader  = 1 << 5,
+    MtkRamdiskHeader = 1 << 6,
+    SonyCmdline      = 1 << 7,
+    SonyIpl          = 1 << 8,
+    SonyRpm          = 1 << 9,
+    SonyAppsbl       = 1 << 10,
+};
+MB_DECLARE_FLAGS(EntryTypes, EntryType)
+MB_DECLARE_OPERATORS_FOR_FLAGS(EntryTypes)
 
-class EntryPrivate;
 class MB_EXPORT Entry
 {
-    MB_DECLARE_PRIVATE(Entry)
-
 public:
-    Entry();
-    Entry(const Entry &entry);
-    Entry(Entry &&entry);
-    ~Entry();
+    Entry(EntryType type) noexcept;
+    ~Entry() noexcept;
 
-    Entry & operator=(const Entry &entry);
-    Entry & operator=(Entry &&entry);
+    MB_DEFAULT_COPY_CONSTRUCT_AND_ASSIGN(Entry)
+    MB_DEFAULT_MOVE_CONSTRUCT_AND_ASSIGN(Entry)
 
-    bool operator==(const Entry &rhs) const;
-    bool operator!=(const Entry &rhs) const;
+    bool operator==(const Entry &rhs) const noexcept;
+    bool operator!=(const Entry &rhs) const noexcept;
 
-    void clear();
+    EntryType type() const;
 
-    optional<int> type() const;
-    void set_type(optional<int> type);
-
-    optional<std::string> name() const;
-    void set_name(optional<std::string> name);
-
-    optional<uint64_t> size() const;
-    void set_size(optional<uint64_t> size);
+    std::optional<uint64_t> size() const;
+    void set_size(std::optional<uint64_t> size);
 
 private:
-    std::unique_ptr<EntryPrivate> _priv_ptr;
+    EntryType m_type;
+    std::optional<uint64_t> m_size;
 };
 
-}
 }

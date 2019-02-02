@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017  Andrew Gunnerson <andrewgunnerson@gmail.com>
+ * Copyright (C) 2017-2018  Andrew Gunnerson <andrewgunnerson@gmail.com>
  *
  * This file is part of DualBootPatcher
  *
@@ -19,11 +19,9 @@
 
 #include "mbbootimg/format/android_error.h"
 
-namespace mb
-{
-namespace bootimg
-{
-namespace android
+#include <string>
+
+namespace mb::bootimg::android
 {
 
 struct AndroidErrorCategory : std::error_category
@@ -58,8 +56,6 @@ std::string AndroidErrorCategory::message(int ev) const
         return "header not found";
     case AndroidError::HeaderOutOfBounds:
         return "header out of bounds";
-    case AndroidError::HeaderSetFieldsFailed:
-        return "failed to set header fields";
     case AndroidError::InvalidPageSize:
         return "invalid page size";
     case AndroidError::MissingPageSize:
@@ -81,6 +77,4 @@ std::string AndroidErrorCategory::message(int ev) const
     }
 }
 
-}
-}
 }

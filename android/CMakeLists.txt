@@ -34,8 +34,30 @@ if(MBP_TOP_LEVEL_BUILD)
         endif()
     endif()
 
-    # List of ExternalProject directories to run "make clean" in
-    set(RECURSIVE_CLEAN_DIRS)
+    function(create_project_wrapper_script project)
+        ExternalProject_Get_Property("${project}" BINARY_DIR)
+
+        # Create wrapper script for running ExternalProject targets from the
+        # top-level build
+        string(CONCAT script
+               "message(STATUS \"Running \${TARGET} in ${BINARY_DIR}\")\n"
+               "execute_process(COMMAND \${CMAKE_COMMAND} --build \"${BINARY_DIR}\" --target \"\${TARGET}\")\n")
+
+        file(WRITE
+             "${CMAKE_CURRENT_BINARY_DIR}/run_target.${project}.cmake"
+             "${script}")
+    endfunction()
+
+    function(expose_project_target project target)
+        add_custom_target(
+            "${project}_${target}"
+            ${CMAKE_COMMAND}
+                -D "TARGET=${target}"
+                -P "${CMAKE_CURRENT_BINARY_DIR}/run_target.${project}.cmake"
+            VERBATIM
+            USES_TERMINAL
+        )
+    endfunction()
 
     # FIXME: Required until https://github.com/android-ndk/ndk/issues/222 is fixed
     set(ENV{ANDROID_NDK} "${ndk_path}")
@@ -47,7 +69,7 @@ if(MBP_TOP_LEVEL_BUILD)
             -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
             -DANDROID_ABI=${abi}
             -DMBP_BUILD_TYPE=${MBP_BUILD_TYPE}
-            -DMBP_ENABLE_TESTS=OFF
+            -DMBP_ENABLE_TESTS=${MBP_ENABLE_TESTS}
             -DMBP_PREBUILTS_BINARY_DIR=${MBP_PREBUILTS_BINARY_DIR}
             -DMBP_SIGN_CONFIG_PATH=${MBP_SIGN_CONFIG_PATH}
             -DJAVA_KEYTOOL=${JAVA_KEYTOOL}
@@ -69,8 +91,7 @@ if(MBP_TOP_LEVEL_BUILD)
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
             -DANDROID_PIE=ON
             -DANDROID_PLATFORM=android-17
-            -DANDROID_STL=gnustl_shared
-            #-DANDROID_STL=c++_shared
+            -DANDROID_STL=c++_shared
             -DMBP_BUILD_TARGET=android-app
         )
 
@@ -78,11 +99,19 @@ if(MBP_TOP_LEVEL_BUILD)
             ${INTERNAL_COMMON_OPTIONS}
             -DCMAKE_BUILD_TYPE=${MBP_SYSTEM_CMAKE_BUILD_TYPE}
             -DANDROID_PIE=OFF
-            -DANDROID_PLATFORM=android-21
-            -DANDROID_STL=gnustl_static
-            #-DANDROID_STL=c++_static
+            -DANDROID_PLATFORM=android-28
+            -DANDROID_STL=c++_static
             -DMBP_BUILD_TARGET=android-system
+            -DMBSYSTRACE_HEADERSGEN_COMMAND=${MBSYSTRACE_HEADERSGEN_COMMAND}
         )
+
+        if(MBP_ENABLE_QEMU)
+            android_abi_to_qemu_arch("${abi}" qemu_arch)
+
+            list(APPEND INTERNAL_ANDROID_SYSTEM_OPTIONS
+                 "-DMBP_ENABLE_QEMU=${MBP_ENABLE_QEMU}"
+                 "-DQEMU_SYSTEM_COMMAND=${QEMU_SYSTEM_${qemu_arch}}")
+        endif()
 
         message(STATUS "Recursive CMake build for Android system components (${abi}):")
         foreach(_option ${INTERNAL_ANDROID_SYSTEM_OPTIONS})
@@ -126,8 +155,13 @@ if(MBP_TOP_LEVEL_BUILD)
             android-system_${abi}
         )
 
-        ExternalProject_Get_Property(android-system_${abi} BINARY_DIR)
-        list(APPEND RECURSIVE_CLEAN_DIRS ${BINARY_DIR})
+        create_project_wrapper_script("android-system_${abi}")
+        expose_project_target("android-system_${abi}" clean)
+
+        if(MBP_ENABLE_QEMU)
+            expose_project_target("android-system_${abi}" qemu-shell)
+            expose_project_target("android-system_${abi}" qemu-tests)
+        endif()
 
         install(
             FILES ${result_files} ${sig_files}
@@ -157,8 +191,8 @@ if(MBP_TOP_LEVEL_BUILD)
                 hosttools
             )
 
-            ExternalProject_Get_Property(android-app_${abi} BINARY_DIR)
-            list(APPEND RECURSIVE_CLEAN_DIRS ${BINARY_DIR})
+            create_project_wrapper_script("android-app_${abi}")
+            expose_project_target("android-app_${abi}" clean)
         endif()
 
         set(ARCHIVE_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/bootui/${abi}/bootui.zip)
@@ -230,48 +264,29 @@ if(MBP_TOP_LEVEL_BUILD)
             COMPONENT Libraries
         )
     endforeach()
-
-    # Create clean target
-    set(CLEAN_CONTENTS)
-    foreach(_dir ${RECURSIVE_CLEAN_DIRS})
-        string(CONCAT CLEAN_CONTENTS
-               ${CLEAN_CONTENTS}
-               "message(STATUS \"Cleaning ${_dir}\")\n"
-               "execute_process(COMMAND \${CMAKE_COMMAND} --build \"${_dir}\" --target clean)\n")
-    endforeach()
-
-    file(WRITE
-         ${CMAKE_CURRENT_BINARY_DIR}/clean-android.cmake
-         "${CLEAN_CONTENTS}")
-
-    add_custom_target(
-        clean-android
-        ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/clean-android.cmake
-        VERBATIM
-    )
 elseif(${MBP_BUILD_TARGET} STREQUAL android-app)
-    # Install gnustl. We do this in the android-app target because we have
+    # Install libc++. We do this in the android-app target because we have
     # access to the CMAKE_LINKER variable.
-    set(gnustl_source "$ENV{ANDROID_NDK}/sources/cxx-stl/gnu-libstdc++/4.9/libs/${ANDROID_ABI}/libgnustl_shared.so")
-    set(gnustl_target "${CMAKE_CURRENT_BINARY_DIR}/libgnustl_shared.stripped.so")
+    set(stl_source "$ENV{ANDROID_NDK}/sources/cxx-stl/llvm-libc++/libs/${ANDROID_ABI}/libc++_shared.so")
+    set(stl_target "${CMAKE_CURRENT_BINARY_DIR}/libc++_shared.stripped.so")
 
     add_custom_command(
-        OUTPUT "${gnustl_target}"
-        COMMAND "${CMAKE_STRIP}" -s "${gnustl_source}" -o "${gnustl_target}"
-        COMMENT "Strip gnustl_shared library"
+        OUTPUT "${stl_target}"
+        COMMAND "${CMAKE_STRIP}" -s "${stl_source}" -o "${stl_target}"
+        COMMENT "Strip libc++_shared library"
         VERBATIM
     )
 
     add_custom_target(
-        strip_gnustl_shared
+        strip_stl_shared
         ALL
-        DEPENDS "${gnustl_target}"
+        DEPENDS "${stl_target}"
     )
 
     install(
-        FILES "${gnustl_target}"
+        FILES "${stl_target}"
         DESTINATION ${LIB_INSTALL_DIR}
-        RENAME libgnustl_shared.so
+        RENAME libc++_shared.so
         PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
                     GROUP_EXECUTE             GROUP_READ
                     WORLD_EXECUTE             WORLD_READ

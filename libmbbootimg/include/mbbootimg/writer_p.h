@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017  Andrew Gunnerson <andrewgunnerson@gmail.com>
+ * Copyright (C) 2017-2018  Andrew Gunnerson <andrewgunnerson@gmail.com>
  *
  * This file is part of DualBootPatcher
  *
@@ -19,9 +19,6 @@
 
 #pragma once
 
-#include "mbbootimg/guard_p.h"
-
-#include <memory>
 #include <string>
 
 #include <cstddef>
@@ -29,38 +26,45 @@
 #include "mbcommon/common.h"
 
 #include "mbbootimg/entry.h"
+#include "mbbootimg/format.h"
 #include "mbbootimg/header.h"
 
 namespace mb
 {
-namespace bootimg
+class File;
+
+namespace bootimg::detail
 {
 
 class FormatWriter
 {
 public:
-    FormatWriter(Writer &writer);
-    virtual ~FormatWriter();
+    FormatWriter() noexcept;
+    virtual ~FormatWriter() noexcept;
 
     MB_DISABLE_COPY_CONSTRUCT_AND_ASSIGN(FormatWriter)
     MB_DEFAULT_MOVE_CONSTRUCT_AND_ASSIGN(FormatWriter)
 
-    virtual int type() = 0;
-    virtual std::string name() = 0;
+    virtual Format type() = 0;
 
-    virtual int init();
-    virtual int set_option(const char *key, const char *value);
-    virtual int get_header(File &file, Header &header) = 0;
-    virtual int write_header(File &file, const Header &header) = 0;
-    virtual int get_entry(File &file, Entry &entry) = 0;
-    virtual int write_entry(File &file, const Entry &entry) = 0;
-    virtual int write_data(File &file, const void *buf, size_t buf_size,
-                           size_t &bytes_written) = 0;
-    virtual int finish_entry(File &file);
-    virtual int close(File &file);
-
-protected:
-    Writer &_writer;
+    virtual oc::result<void>
+    set_option(const char *key, const char *value);
+    virtual oc::result<void>
+    open(File &file);
+    virtual oc::result<void>
+    close(File &file);
+    virtual oc::result<Header>
+    get_header(File &file) = 0;
+    virtual oc::result<void>
+    write_header(File &file, const Header &header) = 0;
+    virtual oc::result<Entry>
+    get_entry(File &file) = 0;
+    virtual oc::result<void>
+    write_entry(File &file, const Entry &entry) = 0;
+    virtual oc::result<size_t>
+    write_data(File &file, const void *buf, size_t buf_size) = 0;
+    virtual oc::result<void>
+    finish_entry(File &file);
 };
 
 enum class WriterState : uint8_t
@@ -69,36 +73,9 @@ enum class WriterState : uint8_t
     Header  = 1u << 2,
     Entry   = 1u << 3,
     Data    = 1u << 4,
-    Closed  = 1u << 5,
-    Fatal   = 1u << 6,
 };
 MB_DECLARE_FLAGS(WriterStates, WriterState)
 MB_DECLARE_OPERATORS_FOR_FLAGS(WriterStates)
-
-class WriterPrivate
-{
-    MB_DECLARE_PUBLIC(Writer)
-
-public:
-    WriterPrivate(Writer *writer);
-
-    int register_format(std::unique_ptr<FormatWriter> format);
-
-    Writer *_pub_ptr;
-
-    // Global state
-    WriterState state;
-
-    // File
-    std::unique_ptr<File> owned_file;
-    File *file;
-
-    // Error
-    std::error_code error_code;
-    std::string error_string;
-
-    std::unique_ptr<FormatWriter> format;
-};
 
 }
 }

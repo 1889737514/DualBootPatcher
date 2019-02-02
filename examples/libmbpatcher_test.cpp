@@ -22,6 +22,7 @@
 #include <cstring>
 
 #include <mbdevice/json.h>
+#include <mblog/base_logger.h>
 #include <mblog/logging.h>
 #include <mbpatcher/patcherconfig.h>
 #include <mbpatcher/patcherinterface.h>
@@ -30,28 +31,37 @@
 class BasicLogger : public mb::log::BaseLogger
 {
 public:
-    virtual void log(mb::log::LogLevel prio, const char *fmt, va_list ap) override
+    virtual void log(const mb::log::LogRecord &rec) override
     {
-        (void) prio;
-        vprintf(fmt, ap);
-        printf("\n");
+        printf("%s\n", rec.fmt_msg.c_str());
+    }
+
+    virtual bool formatted() override
+    {
+        return true;
     }
 };
 
-static bool file_read_all(const std::string &path,
-                          std::vector<unsigned char> &data_out)
+static bool file_read_all(const std::string &path, std::string &data_out)
 {
-    FILE *fp = fopen(path.c_str(), "rb");
+    FILE *fp = fopen(path.c_str(), "rbe");
     if (!fp) {
         return false;
     }
 
-    fseek(fp, 0, SEEK_END);
-    auto size = ftell(fp);
-    rewind(fp);
+    if (fseeko64(fp, 0, SEEK_END) < 0) {
+        return false;
+    }
+    auto size = ftello64(fp);
+    if (size < 0 || std::make_unsigned_t<decltype(size)>(size) > SIZE_MAX) {
+        return false;
+    }
+    if (fseeko64(fp, 0, SEEK_SET) < 0) {
+        return false;
+    }
 
-    std::vector<unsigned char> data(size);
-    if (fread(data.data(), size, 1, fp) != 1) {
+    std::string data(static_cast<size_t>(size), '\0');
+    if (fread(data.data(), data.size(), 1, fp) != 1) {
         fclose(fp);
         return false;
     }
@@ -64,7 +74,7 @@ static bool file_read_all(const std::string &path,
 
 static bool get_device(const char *path, mb::device::Device &device)
 {
-    std::vector<unsigned char> contents;
+    std::string contents;
     if (!file_read_all(path, contents)) {
         fprintf(stderr, "%s: Failed to read file: %s\n", path, strerror(errno));
         return false;
@@ -73,8 +83,7 @@ static bool get_device(const char *path, mb::device::Device &device)
 
     mb::device::JsonError error;
 
-    if (!mb::device::device_from_json(
-            reinterpret_cast<const char *>(contents.data()), device, error)) {
+    if (!mb::device::device_from_json(contents, device, error)) {
         fprintf(stderr, "%s: Failed to load devices\n", path);
         return false;
     }
@@ -87,10 +96,10 @@ static bool get_device(const char *path, mb::device::Device &device)
     return true;
 }
 
-static void mbp_progress_cb(uint64_t bytes, uint64_t maxBytes, void *userdata)
+static void mbp_progress_cb(uint64_t bytes, uint64_t maxBytes)
 {
-    (void) userdata;
-    printf("Current bytes percentage: %.1f\n", 100.0 * bytes / maxBytes);
+    printf("Current bytes percentage: %.1f\n",
+           100.0 * static_cast<double>(bytes) / static_cast<double>(maxBytes));
 }
 
 int main(int argc, char *argv[]) {
@@ -106,7 +115,7 @@ int main(int argc, char *argv[]) {
     const char *input_path = argv[4];
     const char *output_path = argv[5];
 
-    mb::log::log_set_logger(std::make_shared<BasicLogger>());
+    mb::log::set_logger(std::make_shared<BasicLogger>());
 
     mb::device::Device device;
 
@@ -130,7 +139,7 @@ int main(int argc, char *argv[]) {
     }
 
     patcher->set_file_info(&fi);
-    bool ret = patcher->patch_file(&mbp_progress_cb, nullptr, nullptr, nullptr);
+    bool ret = patcher->patch_file(&mbp_progress_cb, nullptr, nullptr);
 
     if (!ret) {
         fprintf(stderr, "Error: %d\n", static_cast<int>(patcher->error()));

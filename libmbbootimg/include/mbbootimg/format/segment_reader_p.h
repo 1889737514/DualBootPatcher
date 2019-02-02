@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017  Andrew Gunnerson <andrewgunnerson@gmail.com>
+ * Copyright (C) 2017-2018  Andrew Gunnerson <andrewgunnerson@gmail.com>
  *
  * This file is part of DualBootPatcher
  *
@@ -21,16 +21,17 @@
 
 #include "mbbootimg/guard_p.h"
 
+#include <optional>
+#include <vector>
+
 #include <cstdint>
 
-#include "mbbootimg/reader.h"
+#include "mbcommon/file.h"
 
-namespace mb
-{
-namespace bootimg
-{
+#include "mbbootimg/entry.h"
 
-constexpr size_t SEGMENT_READER_MAX_ENTRIES = 10;
+namespace mb::bootimg
+{
 
 enum class SegmentReaderState
 {
@@ -41,7 +42,7 @@ enum class SegmentReaderState
 
 struct SegmentReaderEntry
 {
-    int type;
+    EntryType type;
     uint64_t offset;
     uint32_t size;
     bool can_truncate;
@@ -50,36 +51,27 @@ struct SegmentReaderEntry
 class SegmentReader
 {
 public:
-    SegmentReader();
+    SegmentReader() noexcept;
 
-    size_t entries_size() const;
-    void entries_clear();
-    int entries_add(int type, uint64_t offset, uint32_t size, bool can_truncate,
-                    Reader &reader);
+    const std::vector<SegmentReaderEntry> & entries() const;
+    oc::result<void> set_entries(std::vector<SegmentReaderEntry> entries);
 
-    const SegmentReaderEntry * entry() const;
-    const SegmentReaderEntry * next_entry() const;
-    const SegmentReaderEntry * find_entry(int entry_type);
+    oc::result<Entry> move_to_entry(File &file,
+                                    std::vector<SegmentReaderEntry>::iterator srentry);
 
-    int move_to_entry(File &file, Entry &entry,
-                      const SegmentReaderEntry &srentry, Reader &reader);
-
-    int read_entry(File &file, Entry &entry, Reader &reader);
-    int go_to_entry(File &file, Entry &entry, int entry_type, Reader &reader);
-    int read_data(File &file, void *buf, size_t buf_size, size_t &bytes_read,
-                  Reader &reader);
+    oc::result<Entry> read_entry(File &file);
+    oc::result<Entry> go_to_entry(File &file, std::optional<EntryType> entry_type);
+    oc::result<size_t> read_data(File &file, void *buf, size_t buf_size);
 
 private:
-    SegmentReaderState _state;
+    SegmentReaderState m_state;
 
-    SegmentReaderEntry _entries[SEGMENT_READER_MAX_ENTRIES];
-    size_t _entries_len;
-    const SegmentReaderEntry *_entry;
+    std::vector<SegmentReaderEntry> m_entries;
+    decltype(m_entries)::iterator m_entry;
 
-    uint64_t _read_start_offset;
-    uint64_t _read_end_offset;
-    uint64_t _read_cur_offset;
+    uint64_t m_read_start_offset;
+    uint64_t m_read_end_offset;
+    uint64_t m_read_cur_offset;
 };
 
-}
 }

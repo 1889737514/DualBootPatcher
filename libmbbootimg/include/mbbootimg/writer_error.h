@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017  Andrew Gunnerson <andrewgunnerson@gmail.com>
+ * Copyright (C) 2017-2018  Andrew Gunnerson <andrewgunnerson@gmail.com>
  *
  * This file is part of DualBootPatcher
  *
@@ -23,27 +23,25 @@
 
 #include <system_error>
 
-namespace mb
-{
-namespace bootimg
+namespace mb::bootimg
 {
 
 enum class WriterError
 {
     InvalidState            = 10,
 
+    UnknownOption           = 20,
+
     // Format errors
-    InvalidFormatCode       = 20,
-    InvalidFormatName       = 21,
-    NoFormatSelected        = 22,
-    NoFormatRegistered      = 23,
+    NoFormatRegistered      = 30,
+
+    EndOfEntries            = 40,
 };
 
 MB_EXPORT std::error_code make_error_code(WriterError e);
 
 MB_EXPORT const std::error_category & writer_error_category();
 
-}
 }
 
 namespace std

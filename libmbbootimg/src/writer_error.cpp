@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017  Andrew Gunnerson <andrewgunnerson@gmail.com>
+ * Copyright (C) 2017-2018  Andrew Gunnerson <andrewgunnerson@gmail.com>
  *
  * This file is part of DualBootPatcher
  *
@@ -19,9 +19,9 @@
 
 #include "mbbootimg/writer_error.h"
 
-namespace mb
-{
-namespace bootimg
+#include <string>
+
+namespace mb::bootimg
 {
 
 struct WriterErrorCategory : std::error_category
@@ -52,18 +52,15 @@ std::string WriterErrorCategory::message(int ev) const
     switch (static_cast<WriterError>(ev)) {
     case WriterError::InvalidState:
         return "invalid state";
-    case WriterError::InvalidFormatCode:
-        return "invalid format code";
-    case WriterError::InvalidFormatName:
-        return "invalid format name";
-    case WriterError::NoFormatSelected:
-        return "no format selected";
+    case WriterError::UnknownOption:
+        return "unknown option";
     case WriterError::NoFormatRegistered:
         return "no format registered";
+    case WriterError::EndOfEntries:
+        return "end of entries";
     default:
         return "(unknown writer error)";
     }
 }
 
-}
 }
